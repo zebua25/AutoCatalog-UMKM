@@ -5,7 +5,7 @@ import pandas as pd
 from io import BytesIO
 
 # Masukkan token Hugging Face kamu di sini
-API_TOKEN = "hf_XXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+API_TOKEN = "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"
 
 headers = {
     "Authorization": f"Bearer {API_TOKEN}"
