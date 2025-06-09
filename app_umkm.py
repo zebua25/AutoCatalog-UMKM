@@ -1,73 +1,57 @@
+# Auto-Catalog Generator UMKM
+
 import streamlit as st
-import requests
+from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
-import io
+import torch
 import pandas as pd
-import base64
+import os
 
-# Ganti dengan token milik kalian
-API_TOKEN = "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"
-API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+# Load model and processor
+@st.cache_resource
+def load_model():
+    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    return processor, model, device
 
-headers = {
-    "Authorization": f"Bearer {API_TOKEN}"
-}
+processor, model, device = load_model()
 
-def encode_image(image):
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    return img_str
-
-def query(image_base64):
-    payload = {
-        "inputs": {
-            "image": image_base64
-        }
-    }
-    response = requests.post(API_URL, headers=headers, json=payload)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        st.error(f"❌ Gagal memanggil API: {response.status_code} - {response.text}")
-        return None
-
-st.set_page_config(page_title="Auto-Catalog UMKM")
+# Streamlit UI
+st.set_page_config(page_title="Auto-Catalog Generator UMKM")
 st.title("🛍️ Auto-Catalog Generator untuk UMKM")
-st.markdown("Upload gambar produk, AI akan menghasilkan deskripsi katalog secara otomatis.")
+st.write("Upload gambar produk UMKM kamu, dan sistem kami akan otomatis membuat katalog produk!")
 
-uploaded_files = st.file_uploader("Upload gambar produk", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload Gambar Produk", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-data_katalog = []
+catalog = []
 
 if uploaded_files:
-    for file in uploaded_files:
-        image = Image.open(file).convert("RGB")
-        st.image(image, width=300)
+    for uploaded_file in uploaded_files:
+        image = Image.open(uploaded_file).convert("RGB")
+        inputs = processor(image, return_tensors="pt").to(device)
+        out = model.generate(**inputs)
+        caption = processor.decode(out[0], skip_special_tokens=True)
 
-        encoded_image = encode_image(image)
-        result = query(encoded_image)
+        st.image(image, caption="Gambar Produk", width=250)
+        st.write(f"**Judul Otomatis:** {caption.title()}")
+        st.write(f"**Deskripsi:** {caption}")
 
-        if result and isinstance(result, list) and "generated_text" in result[0]:
-            caption = result[0]["generated_text"]
-        else:
-            caption = "Deskripsi tidak tersedia"
+        kategori = st.selectbox(f"Kategori untuk: {caption.title()}", ["Makanan", "Minuman", "Kerajinan", "Pakaian", "Lainnya"], key=caption)
+        harga = st.text_input(f"Harga untuk: {caption.title()}", value="Rp 0", key=caption+"_harga")
 
-        judul = caption.title()
-        kategori = "Umum"
-        harga = "Rp100.000"
-
-        data_katalog.append({
-            "Nama File": file.name,
-            "Judul Produk": judul,
-            "Deskripsi Produk": caption,
+        catalog.append({
+            "Judul Produk": caption.title(),
+            "Deskripsi": caption,
             "Kategori": kategori,
             "Harga": harga
         })
 
-    df = pd.DataFrame(data_katalog)
-    st.success("✅ Katalog berhasil dibuat otomatis!")
-    st.dataframe(df)
+    if catalog:
+        st.subheader("📦 Katalog Produk Kamu")
+        df_catalog = pd.DataFrame(catalog)
+        st.dataframe(df_catalog)
 
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Unduh Katalog (CSV)", csv, "katalog_umkm.csv", "text/csv")
+        csv = df_catalog.to_csv(index=False).encode('utf-8')
+        st.download_button("💾 Download Katalog (CSV)", data=csv, file_name="katalog_umkm.csv", mime="text/csv")
