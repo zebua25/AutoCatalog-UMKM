@@ -3,26 +3,38 @@ import requests
 from PIL import Image
 import io
 import pandas as pd
+import base64
 
-# Ganti ini dengan token kamu dari HuggingFace
+# Ganti dengan token milik kalian
 API_TOKEN = "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"
-API_URL = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning"
+API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
 
-headers = {"Authorization": f"Bearer {API_TOKEN}"}
+headers = {
+    "Authorization": f"Bearer {API_TOKEN}"
+}
 
-# Fungsi untuk kirim gambar dan dapatkan caption
-def query_image(image_bytes):
-    response = requests.post(API_URL, headers=headers, data=image_bytes)
+def encode_image(image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG")
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    return img_str
+
+def query(image_base64):
+    payload = {
+        "inputs": {
+            "image": image_base64
+        }
+    }
+    response = requests.post(API_URL, headers=headers, json=payload)
     if response.status_code == 200:
         return response.json()
     else:
         st.error(f"❌ Gagal memanggil API: {response.status_code} - {response.text}")
         return None
 
-# App UI
-st.set_page_config(page_title="Auto-Catalog UMKM", layout="centered")
-st.title("🛒 Auto-Catalog Generator untuk UMKM")
-st.markdown("Upload gambar produk, dan AI akan buatkan deskripsi katalog secara otomatis.")
+st.set_page_config(page_title="Auto-Catalog UMKM")
+st.title("🛍️ Auto-Catalog Generator untuk UMKM")
+st.markdown("Upload gambar produk, AI akan menghasilkan deskripsi katalog secara otomatis.")
 
 uploaded_files = st.file_uploader("Upload gambar produk", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
@@ -31,23 +43,18 @@ data_katalog = []
 if uploaded_files:
     for file in uploaded_files:
         image = Image.open(file).convert("RGB")
-        st.image(image, width=300, caption=f"Gambar: {file.name}")
+        st.image(image, width=300)
 
-        # Convert image ke bytes
-        buffered = io.BytesIO()
-        image.save(buffered, format="JPEG")
-        image_bytes = buffered.getvalue()
+        encoded_image = encode_image(image)
+        result = query(encoded_image)
 
-        # Kirim ke API
-        result = query_image(image_bytes)
         if result and isinstance(result, list) and "generated_text" in result[0]:
             caption = result[0]["generated_text"]
         else:
             caption = "Deskripsi tidak tersedia"
 
-        # Tambahkan ke data katalog
-        judul = caption.strip().title()
-        kategori = "Fashion" if "shirt" in caption.lower() or "dress" in caption.lower() else "Umum"
+        judul = caption.title()
+        kategori = "Umum"
         harga = "Rp100.000"
 
         data_katalog.append({
@@ -58,11 +65,9 @@ if uploaded_files:
             "Harga": harga
         })
 
-    # Tampilkan katalog
     df = pd.DataFrame(data_katalog)
-    st.success("✅ Katalog berhasil dibuat otomatis oleh AI!")
+    st.success("✅ Katalog berhasil dibuat otomatis!")
     st.dataframe(df)
 
-    # Tombol unduh
     csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Unduh Katalog (CSV)", data=csv, file_name="katalog_umkm.csv", mime="text/csv")
+    st.download_button("📥 Unduh Katalog (CSV)", csv, "katalog_umkm.csv", "text/csv")
