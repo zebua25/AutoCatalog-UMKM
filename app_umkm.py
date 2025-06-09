@@ -5,7 +5,7 @@ import io
 import pandas as pd
 
 # Ganti ini dengan token kamu dari HuggingFace
-API_TOKEN = "hf_your_token_here"
+API_TOKEN = "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"
 API_URL = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning"
 
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
