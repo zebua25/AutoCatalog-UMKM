@@ -1,5 +1,4 @@
 streamlit
-torch
-transformers
-Pillow
+requests
+pillow
 pandas
