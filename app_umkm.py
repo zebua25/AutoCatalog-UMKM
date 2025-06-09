@@ -1,52 +1,61 @@
-# Auto-Catalog Generator UMKM
-
 import streamlit as st
-from transformers import BlipProcessor, BlipForConditionalGeneration
+import requests
 from PIL import Image
-import torch
 import pandas as pd
-import os
+from io import BytesIO
 
-# Load model and processor
-@st.cache_resource
-def load_model():
-    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
-    return processor, model, device
+# Masukkan token Hugging Face kamu di sini
+API_TOKEN = "hf_XXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
-processor, model, device = load_model()
+headers = {
+    "Authorization": f"Bearer {API_TOKEN}"
+}
 
-# Streamlit UI
-st.set_page_config(page_title="Auto-Catalog Generator UMKM")
-st.title("🛍️ Auto-Catalog Generator untuk UMKM")
-st.write("Upload gambar produk UMKM kamu, dan sistem kami akan otomatis membuat katalog produk!")
+API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+
+st.title("🛍️ Auto-Catalog Generator UMKM dengan AI Cloud")
 
 uploaded_files = st.file_uploader("Upload Gambar Produk", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
 catalog = []
 
+def query_hf_api(image_bytes):
+    response = requests.post(API_URL, headers=headers, data=image_bytes)
+    if response.status_code == 200:
+        output = response.json()
+        # output format: [{'generated_text': 'some caption'}]
+        if isinstance(output, list) and "generated_text" in output[0]:
+            return output[0]["generated_text"]
+        else:
+            return "Caption tidak ditemukan"
+    else:
+        st.error(f"❌ Gagal memanggil API: {response.status_code} - {response.text}")
+        return None
+
 if uploaded_files:
     for uploaded_file in uploaded_files:
         image = Image.open(uploaded_file).convert("RGB")
-        inputs = processor(image, return_tensors="pt").to(device)
-        out = model.generate(**inputs)
-        caption = processor.decode(out[0], skip_special_tokens=True)
-
         st.image(image, caption="Gambar Produk", width=250)
-        st.write(f"**Judul Otomatis:** {caption.title()}")
-        st.write(f"**Deskripsi:** {caption}")
 
-        kategori = st.selectbox(f"Kategori untuk: {caption.title()}", ["Makanan", "Minuman", "Kerajinan", "Pakaian", "Lainnya"], key=caption)
-        harga = st.text_input(f"Harga untuk: {caption.title()}", value="Rp 0", key=caption+"_harga")
+        # Convert image to bytes
+        buffered = BytesIO()
+        image.save(buffered, format="JPEG")
+        img_bytes = buffered.getvalue()
 
-        catalog.append({
-            "Judul Produk": caption.title(),
-            "Deskripsi": caption,
-            "Kategori": kategori,
-            "Harga": harga
-        })
+        caption = query_hf_api(img_bytes)
+        if caption:
+            st.write(f"**Judul Otomatis:** {caption.title()}")
+            st.write(f"**Deskripsi:** {caption}")
+
+            kategori = st.selectbox(f"Kategori untuk: {caption.title()}", ["Makanan", "Minuman", "Kerajinan", "Pakaian", "Lainnya"], key=uploaded_file.name)
+            harga = st.text_input(f"Harga untuk: {caption.title()}", value="Rp 0", key=uploaded_file.name + "_harga")
+
+            catalog.append({
+                "Judul Produk": caption.title(),
+                "Deskripsi": caption,
+                "Kategori": kategori,
+                "Harga": harga
+            })
 
     if catalog:
         st.subheader("📦 Katalog Produk Kamu")
